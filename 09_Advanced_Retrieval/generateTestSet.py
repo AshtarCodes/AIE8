@@ -13,6 +13,7 @@ from ragas.testset import TestsetGenerator
 from ragas.testset.graph import KnowledgeGraph, Node, NodeType
 from ragas.testset.graph import NodeType
 from ragas.testset.persona import Persona
+from datasets import Dataset
 from ragas.testset.synthesizers import (
     SingleHopSpecificQuerySynthesizer,
     default_query_distribution,
@@ -137,3 +138,75 @@ def generate_testset():
     testset.to_csv(TESTSET_PATH)
     evaluation_dataset = testset.to_evaluation_dataset()
     evaluation_dataset.to_csv(EVALUATION_DATASET_PATH)
+
+#### OTHER UTILITIES
+def get_react_docs():
+    docs: List[Document] = []
+    markdown_files = glob.glob("data/react/*.md")
+    for md_file in markdown_files:
+        with open(md_file, "r", encoding="utf-8") as f:
+
+            doc = Document(page_content=f.read(), metadata={
+                "source": md_file,
+                "title": os.path.basename(md_file),
+                "author": "React.js Documentation",
+                "url": f"https://react.dev/reference/react/{os.path.basename(md_file)}",
+                "format": "markdown"
+            })
+            docs.append(doc)
+    return docs
+
+def format_dataset(chain, df):
+    """
+    Evaluate a chain by pre-computing answers and contexts, following the working pattern.
+    """
+    evaluation_data = {
+        "question": [],
+        "answer": [],
+        "contexts": [],
+        "ground_truth": [],
+    }
+    
+    for idx, row in df.iterrows():
+        question = row["user_input"]
+        ground_truth = row["reference"]
+        
+        print(f"   [{idx + 1}/{len(df)}] {question[:60]}...")
+        
+        try:
+            # Call the chain
+            result = chain.invoke({"question": question})
+            
+            # Extract answer and contexts from chain output
+            answer = result.get("response", {}).content if hasattr(result.get("response", {}), 'content') else str(result.get("response", ""))
+            contexts = result.get("context", [])
+            
+            # Convert contexts to list of strings if needed
+            if isinstance(contexts, list):
+                contexts = [str(ctx.page_content) if hasattr(ctx, 'page_content') else str(ctx) for ctx in contexts]
+            else:
+                contexts = [str(contexts)]
+            
+            # Store for evaluation
+            evaluation_data["question"].append(question)
+            evaluation_data["answer"].append(answer)
+            evaluation_data["contexts"].append(contexts)
+            evaluation_data["ground_truth"].append(ground_truth)
+            
+        except Exception as e:
+            print(f"      ⚠ Error: {e}")
+            # Add empty entries to maintain alignment
+            evaluation_data["question"].append(question)
+            evaluation_data["answer"].append("")
+            evaluation_data["contexts"].append([])
+            evaluation_data["ground_truth"].append(ground_truth)
+    
+    # Create dataset from dict (matching working example)
+    dataset = Dataset.from_dict({
+        "question": evaluation_data["question"],
+        "answer": evaluation_data["answer"],
+        "contexts": evaluation_data["contexts"],
+        "ground_truth": evaluation_data["ground_truth"],
+    })
+    
+    return dataset
