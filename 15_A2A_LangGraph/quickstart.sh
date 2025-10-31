@@ -19,7 +19,7 @@ if ! command -v uv &> /dev/null; then
 fi
 
 # Check if .env exists
-if [ ! -f .env ]; then
+if [ ! -f ../.env ]; then
     echo "⚙️  No .env file found. Running setup..."
     python3 setup.py
     echo ""
