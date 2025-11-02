@@ -21,6 +21,7 @@ from .rag import ProductionRAGChain
 class AgentState(TypedDict):
     """State schema for agent graphs."""
     messages: Annotated[List[BaseMessage], add_messages]
+    helpfulness: Optional[str]  # Stores helpfulness decision: "Y", "N", or "END"
 
 
 def create_rag_tool(rag_chain: ProductionRAGChain):
@@ -108,6 +109,122 @@ def create_langgraph_agent(
     graph.add_node("action", tool_node)
     graph.set_entry_point("agent")
     graph.add_conditional_edges("agent", should_continue, {"action": "action", END: END})
+    graph.add_edge("action", "agent")
+    
+    return graph.compile()
+
+
+def route_to_action_or_helpfulness(state: AgentState):
+    """Decide whether to execute tools or run the helpfulness evaluator."""
+    last_message = state["messages"][-1]
+    if getattr(last_message, "tool_calls", None):
+        return "action"
+    return "helpfulness"
+
+
+def helpfulness_node(state: AgentState) -> Dict[str, Any]:
+    """Evaluate helpfulness of the latest response relative to the initial query."""
+    # If we've exceeded loop limit, add a message and set END marker
+    if len(state["messages"]) > 10:
+        unable_to_help_message = AIMessage(
+            content="I apologize, but I'm unable to provide a helpful response to your query after multiple attempts. I may not have sufficient information to address this question adequately."
+        )
+        return {
+            "messages": [unable_to_help_message],
+            "helpfulness": "END"
+        }
+    
+    initial_query = state["messages"][0]
+    final_response = state["messages"][-1]
+    
+    prompt_template = """
+Given an initial query and a final response, determine if the final response is extremely helpful or not. Please indicate helpfulness with a 'Y' and unhelpfulness as an 'N'.
+
+Initial Query:
+{initial_query}
+
+Final Response:
+{final_response}"""
+    
+    helpfulness_prompt_template = PromptTemplate.from_template(prompt_template)
+    helpfulness_check_model = get_openai_model(model_name="gpt-4.1-mini")
+    helpfulness_chain = (
+        helpfulness_prompt_template | helpfulness_check_model | StrOutputParser()
+    )
+    
+    helpfulness_response = helpfulness_chain.invoke(
+        {
+            "initial_query": initial_query.content,
+            "final_response": final_response.content,
+        }
+    )
+    
+    decision = "Y" if "Y" in helpfulness_response else "N"
+    return {"helpfulness": decision}
+
+
+def helpfulness_decision(state: AgentState):
+    """Terminate on 'Y' or loop otherwise; guard against infinite loops."""
+    helpfulness = state.get("helpfulness")
+    
+    # Check loop-limit marker
+    if helpfulness == "END":
+        return END
+    
+    # If helpful, end; otherwise continue
+    if helpfulness == "Y":
+        return "end"
+    return "continue"
+
+
+def create_agent_with_helpfulness(
+    model_name: str = "gpt-4",
+    temperature: float = 0.1,
+    tools: Optional[List] = None,
+    rag_chain: Optional[ProductionRAGChain] = None
+):
+    """Create a LangGraph agent with helpfulness evaluation.
+    
+    Args:
+        model_name: OpenAI model name
+        temperature: Model temperature
+        tools: List of tools to bind to the model
+        rag_chain: Optional RAG chain to include as a tool
+        
+    Returns:
+        Compiled LangGraph agent with helpfulness checking
+    """
+    if tools is None:
+        tools = get_default_tools(rag_chain)
+    
+    # Get model and bind tools
+    model = get_openai_model(model_name=model_name, temperature=temperature)
+    model_with_tools = model.bind_tools(tools)
+    
+    def call_model(state: AgentState) -> Dict[str, Any]:
+        """Invoke the model with messages."""
+        messages = state["messages"]
+        response = model_with_tools.invoke(messages)
+        return {"messages": [response]}
+    
+    # Build graph with helpfulness evaluation
+    graph = StateGraph(AgentState)
+    tool_node = ToolNode(tools)
+    
+    graph.add_node("agent", call_model)
+    graph.add_node("action", tool_node)
+    graph.add_node("helpfulness", helpfulness_node)
+    graph.set_entry_point("agent")
+    graph.add_conditional_edges(
+        "agent",
+        route_to_action_or_helpfulness,
+        {"action": "action", "helpfulness": "helpfulness"},
+    )
+    graph.add_conditional_edges(
+        "helpfulness",
+        helpfulness_decision,
+        {"continue": "agent", "end": END, END: END},
+    )
     graph.add_edge("action", "agent")
     
     return graph.compile()

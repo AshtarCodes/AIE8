@@ -26,6 +26,7 @@ def get_openai_model(
     kwargs = {
         "model": name,
         "temperature": temperature,
+        "cache": True,
     }
     
     if max_tokens is not None:
