@@ -1,5 +1,6 @@
 **/data/react
 **/evals/react
+**/cache/embeddings
 .DS_Store
 # Byte-compiled / optimized / DLL files
 __pycache__/

@@ -42,6 +42,8 @@ def configure_guardrails(api_key: str):
 
 def main():
     # Check for API key in environment variable first
+    from dotenv import load_dotenv
+    load_dotenv("../.env")
     api_key = os.getenv("GUARDRAILS_API_KEY")
     
     # Then check command line argument

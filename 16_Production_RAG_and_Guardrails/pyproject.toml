@@ -25,4 +25,5 @@ dependencies = [
     "transformers>=4.11.3",
     "torch>=2.1.1",
     "accelerate>=1.11.0",
+    "dotenv>=0.9.9",
 ]
