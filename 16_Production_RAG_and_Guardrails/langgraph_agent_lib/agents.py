@@ -292,7 +292,7 @@ def error_handler_node(state: GuardrailsState) -> Dict[str, Any]:
             content="I apologize, but a validation error occurred. Please try again."
         )
     
-    return {"messages": [error_message]}
+    return {"messages": [error_message], "debug": state.get("debug", "")}
 
 
 def create_agent_with_guardrails(
@@ -377,13 +377,13 @@ def create_agent_with_guardrails(
     input_validation_node = create_guardrails_node(
         input_guard=input_guard,
         output_guard=None,
-        strict_mode=False  # Don't raise exceptions, record in validation_results
+        strict_mode=strict_mode  # Don't raise exceptions, record in validation_results
     )
     
     output_validation_node = create_guardrails_node(
         input_guard=None,
         output_guard=output_guard,
-        strict_mode=False  # Don't raise exceptions, record in validation_results
+        strict_mode=strict_mode  # Don't raise exceptions, record in validation_results
     )
     
     # Build graph with guardrails

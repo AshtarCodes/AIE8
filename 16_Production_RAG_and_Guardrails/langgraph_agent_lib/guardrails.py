@@ -18,11 +18,12 @@ from guardrails.hub import (
     GuardrailsPII
 )
 from guardrails import Guard
-from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
+from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, ToolMessage
 from langgraph.graph.message import add_messages
 
 # Set up logging
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 
 class GuardrailsState(TypedDict):
@@ -207,6 +208,7 @@ def validate_input(
 def validate_output(
     guard: Guard,
     agent_response: str,
+    original_prompt: str,
     context: Optional[str] = None,
     raise_on_failure: bool = True
 ) -> Dict[str, Any]:
@@ -215,7 +217,10 @@ def validate_output(
     Args:
         guard: The Guard instance to use for validation.
         agent_response: The agent's response to validate.
-        context: Optional context for factuality checking.
+        original_prompt: Optional original prompt that generated this response.
+            Required by LlmRagEvaluator for factuality checking.
+        context: Optional additional context for factuality checking (e.g., retrieved documents).
+            Can be provided in addition to original_prompt.
         raise_on_failure: Whether to raise an exception on validation failure.
             If False, returns validation result. Default: True.
         
@@ -226,16 +231,18 @@ def validate_output(
         RuntimeError: If validation fails and raise_on_failure is True.
     """
     try:
-        # For factuality guards, include context if provided
-        if context:
-            result = guard.validate(agent_response, metadata={"context": context})
-        else:
-            result = guard.validate(agent_response)
+        logger.debug(f"Validating output with guardrails: {agent_response}")
+        logger.debug(f"Original prompt: {original_prompt}")
+        logger.debug(f"Context: {context}")
+        metadata = { "user_message": original_prompt, "context": context, "llm_response": agent_response, "original_prompt": original_prompt, "reference_text": context }
+        # result = guard.parse(agent_response, metadata=metadata)
+        result = guard.validate(llm_output=agent_response, metadata=metadata)
         
         validation_result = {
             "validation_passed": result.validation_passed,
             "validated_output": result.validated_output if hasattr(result, 'validated_output') else agent_response,
-            "error": None
+            "error": None,
+            "debug": { "original_prompt": original_prompt, "context": context, "llm_response": agent_response }
         }
         
         if not result.validation_passed and raise_on_failure:
@@ -256,6 +263,20 @@ def validate_output(
             "validated_output": agent_response,
             "error": str(e)
         }
+
+def get_context(messages: List[BaseMessage]) -> str:
+    """Get context from messages for factuality checking."""
+    context_text = ""
+    for msg in reversed(messages):
+        if isinstance(msg, ToolMessage) or msg.type == "tool":
+            context_text += msg.content
+    if not context_text:
+        for msg in messages:
+            if isinstance(msg, HumanMessage):
+                context_text = msg.content
+                break
+
+    return context_text
 
 
 def create_guardrails_node(
@@ -283,7 +304,7 @@ def create_guardrails_node(
         Returns:
             Updated state with validation results.
         """
-        messages = state.get("messages", [])
+        messages = state["messages"]
         validation_results = []
         
         if not messages:
@@ -294,17 +315,16 @@ def create_guardrails_node(
         
         try:
             if isinstance(last_message, HumanMessage) and input_guard:
-                # Validate user input
-                logger.debug("Validating user input with guardrails")
                 result = validate_input(
                     input_guard,
                     last_message.content,
                     raise_on_failure=strict_mode
                 )
+
                 validation_results.append({
                     "type": "input",
                     "passed": result["validation_passed"],
-                    "message": last_message.content[:100]
+                    "message": last_message.content
                 })
                 
                 # If validation modified the input, we could update the message here
@@ -312,17 +332,28 @@ def create_guardrails_node(
                     logger.error(f"Input validation failed: {result.get('error')}")
             
             elif isinstance(last_message, AIMessage) and output_guard:
-                # Validate agent output
-                logger.debug("Validating agent output with guardrails")
+                original_prompt = messages[0].content
+                for msg in messages:
+                    if isinstance(msg, HumanMessage):
+                        original_prompt = msg.content
+                        break
+                
+                # Extract context from tool outputs (ToolMessage objects)
+                # These contain the results from RAG, search, and other tools
+                context_text = get_context(messages)
+                # Pass original_prompt and context for factuality guards
                 result = validate_output(
-                    output_guard,
-                    last_message.content,
+                    guard=output_guard,
+                    agent_response=last_message.content,
+                    original_prompt=original_prompt,
+                    context=context_text,
                     raise_on_failure=strict_mode
                 )
                 validation_results.append({
                     "type": "output",
                     "passed": result["validation_passed"],
-                    "message": last_message.content[:100]
+                    "message": last_message.content,
+                    "debug": { "original_prompt": original_prompt, "context": context_text, "llm_response": last_message.content }
                 })
                 
                 if not result["validation_passed"] and strict_mode:
@@ -331,14 +362,15 @@ def create_guardrails_node(
         except Exception as e:
             logger.error(f"Guardrails validation error: {e}", exc_info=True)
             if strict_mode:
-                raise
+                raise e
             validation_results.append({
                 "type": "error",
                 "passed": False,
-                "error": str(e)
+                "error": str(e),
+                "debug": { "original_prompt": original_prompt, "context": context_text, "llm_response": last_message.content }
             })
         
-        return {"validation_results": validation_results}
+        return {"validation_results": validation_results, "debug": result.get("debug", "")}
     
     return guardrails_node
 

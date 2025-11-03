@@ -7,6 +7,7 @@ from .agents import create_langgraph_agent, create_agent_with_guardrails, create
 from .caching import CacheBackedEmbeddings, setup_llm_cache
 from .rag import ProductionRAGChain
 from .models import get_openai_model
+from .debug import invoke_with_debug, stream_events_with_debug, print_graph_structure
 
 __version__ = "0.2.0"
 __all__ = [
@@ -17,5 +18,8 @@ __all__ = [
     "setup_llm_cache",
     "ProductionRAGChain",
     "get_openai_model",
+    "invoke_with_debug",
+    "stream_events_with_debug",
+    "print_graph_structure",
 ]
 
