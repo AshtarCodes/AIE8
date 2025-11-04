@@ -240,13 +240,17 @@ def create_input_validation_router(strict_mode: bool = True):
     """Create a router function for input validation."""
     def route_after_input_validation(state: GuardrailsState):
         """Route based on input validation results."""
-        if not strict_mode:
-            # In lenient mode, always continue to agent
-            return "agent"
         validation_results = state.get("validation_results", [])
-        if validation_results and not validation_results[-1].get("passed", True):
-            return "error_handler"
-        return "agent"
+
+        passed = True
+        for result in validation_results:
+            if not result.get("passed", True):
+                passed = False
+                break
+        
+        if passed:
+            return "agent"
+        return "error_handler"
     return route_after_input_validation
 
 
@@ -254,13 +258,16 @@ def create_output_validation_router(strict_mode: bool = True):
     """Create a router function for output validation."""
     def route_after_output_validation(state: GuardrailsState):
         """Route based on output validation results."""
-        if not strict_mode:
-            # In lenient mode, always end successfully
-            return END
         validation_results = state.get("validation_results", [])
-        if validation_results and not validation_results[-1].get("passed", True):
-            return "error_handler"
-        return END
+
+        passed = True
+        for result in validation_results:
+            if not result.get("passed", True):
+                passed = False
+                break
+        if passed:
+            return END
+        return "error_handler"
     return route_after_output_validation
 
 
