@@ -34,8 +34,8 @@ embedding_model = OpenAIEmbeddings(
     # openai_api_key=os.getenv("TOGETHER_API_KEY"),
 )
 
-# create together client using ChatOpenAI with Together AI's endpoint
 # Had issues resolving dependency conflicts between langchain-together and the langchain-core versions
+# create together client using ChatOpenAI with Together AI's endpoint
 llm_client = ChatOpenAI(
     model="openai/gpt-oss-20b",
     base_url="https://api.together.xyz/v1",
