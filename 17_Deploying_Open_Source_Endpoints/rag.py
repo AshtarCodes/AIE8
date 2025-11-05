@@ -3,7 +3,7 @@ import os
 from dotenv import load_dotenv
 from langchain_community.embeddings import OpenAIEmbeddings
 from langchain_openai import ChatOpenAI
-from langchain_community.vectorstores import Chroma
+from langchain_community.vectorstores import Qdrant
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
 from langchain_core.prompts import ChatPromptTemplate
@@ -12,6 +12,7 @@ from langgraph.graph.message import add_messages
 from langchain_core.messages import HumanMessage, AIMessage
 from typing import List, TypedDict
 from langchain_core.output_parsers import StrOutputParser
+from langchain_together import TogetherEmbeddings, ChatTogether
 
 load_dotenv("../.env")
 # import the csv from ./data/*.csv and split into documents
@@ -28,29 +29,36 @@ print(f"Split into {len(chunks)} chunks")
 
 # create embedding model using Together AI's endpoint
 # Together AI provides embeddings via OpenAI-compatible API
-embedding_model = OpenAIEmbeddings(
-    model="text-embedding-3-small",
-    # openai_api_base="https://api.together.xyz/v1",
-    # openai_api_key=os.getenv("TOGETHER_API_KEY"),
-)
+# embedding_model = OpenAIEmbeddings(
+#     model="text-embedding-3-small",
+#     # openai_api_base="https://api.together.xyz/v1",
+#     # openai_api_key=os.getenv("TOGETHER_API_KEY"),
+# )
 
+# Create embedding model using Together AI's BAAI/bge-large-en-v1.5 model
+embedding_model = TogetherEmbeddings(
+    model="BAAI/bge-large-en-v1.5"
+)
 # Had issues resolving dependency conflicts between langchain-together and the langchain-core versions
 # create together client using ChatOpenAI with Together AI's endpoint
-llm_client = ChatOpenAI(
+# llm_client = ChatOpenAI(
+#     model="openai/gpt-oss-20b",
+#     base_url="https://api.together.xyz/v1",
+#     api_key=os.getenv("TOGETHER_API_KEY"),
+#     temperature=0.7,
+# )
+
+# Create together client using ChatTogether
+# Note: ChatTogether uses TOGETHER_API_KEY from environment automatically
+llm_client = ChatTogether(
     model="openai/gpt-oss-20b",
-    base_url="https://api.together.xyz/v1",
-    api_key=os.getenv("TOGETHER_API_KEY"),
     temperature=0.7,
 )
-# create chroma in memory vector store
-chroma = Chroma.from_documents(
-    documents=chunks,
-    embedding=embedding_model,
-    persist_directory="chroma_db",
-)
 
-# create retriever
-retriever = chroma.as_retriever()
+qdrant_vectorstore = Qdrant.from_documents(
+    documents=chunks, embedding=embedding_model, location=":memory:"
+)
+retriever = qdrant_vectorstore.as_retriever()
 
 # create prompt
 prompt = ChatPromptTemplate.from_template(
