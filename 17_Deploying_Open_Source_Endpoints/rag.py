@@ -1,32 +1,19 @@
 # import embedding model and together client
-from langchain_community.embeddings import OpenAIEmbeddings
-from langchain_openai import ChatOpenAI
 import os
 from dotenv import load_dotenv
-
-load_dotenv("../.env")
-
-# create embedding model using Together AI's endpoint
-# Together AI provides embeddings via OpenAI-compatible API
-embedding_model = OpenAIEmbeddings(
-    model="text-embedding-3-small",
-    # openai_api_base="https://api.together.xyz/v1",
-    # openai_api_key=os.getenv("TOGETHER_API_KEY"),
-)
-
-# create together client using ChatOpenAI with Together AI's endpoint
-llm_client = ChatOpenAI(
-    model="openai/gpt-oss-20b",
-    base_url="https://api.together.xyz/v1",
-    api_key=os.getenv("TOGETHER_API_KEY"),
-    temperature=0.7,
-)
-
-# use chroma in memory to store and query documents
+from langchain_community.embeddings import OpenAIEmbeddings
+from langchain_openai import ChatOpenAI
 from langchain_community.vectorstores import Chroma
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
 from langchain_core.prompts import ChatPromptTemplate
+from langgraph.graph import StateGraph, START, END
+from langgraph.graph.message import add_messages
+from langchain_core.messages import HumanMessage, AIMessage
+from typing import List, TypedDict
+from langchain_core.output_parsers import StrOutputParser
+
+load_dotenv("../.env")
 # import the csv from ./data/*.csv and split into documents
 documents = []
 for file in os.listdir("./data"):
@@ -39,6 +26,22 @@ text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=20
 chunks = text_splitter.split_documents(documents)
 print(f"Split into {len(chunks)} chunks")
 
+# create embedding model using Together AI's endpoint
+# Together AI provides embeddings via OpenAI-compatible API
+embedding_model = OpenAIEmbeddings(
+    model="text-embedding-3-small",
+    # openai_api_base="https://api.together.xyz/v1",
+    # openai_api_key=os.getenv("TOGETHER_API_KEY"),
+)
+
+# create together client using ChatOpenAI with Together AI's endpoint
+# Had issues resolving dependency conflicts between langchain-together and the langchain-core versions
+llm_client = ChatOpenAI(
+    model="openai/gpt-oss-20b",
+    base_url="https://api.together.xyz/v1",
+    api_key=os.getenv("TOGETHER_API_KEY"),
+    temperature=0.7,
+)
 # create chroma in memory vector store
 chroma = Chroma.from_documents(
     documents=chunks,
@@ -59,12 +62,7 @@ prompt = ChatPromptTemplate.from_template(
     """
 )
 
-# creat langgraph state
-from langgraph.graph import StateGraph, START, END
-from langgraph.graph.message import add_messages
-from langchain_core.messages import HumanMessage, AIMessage
-from typing import List, TypedDict
-from langchain_core.output_parsers import StrOutputParser
+
 
 class _RAGState(TypedDict):
     """State schema for the simple two-step RAG graph: retrieve then generate."""
