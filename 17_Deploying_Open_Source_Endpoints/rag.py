@@ -1,4 +1,3 @@
-# import embedding model and together client
 import os
 from dotenv import load_dotenv
 from langchain_community.embeddings import OpenAIEmbeddings
@@ -27,26 +26,10 @@ text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=20
 chunks = text_splitter.split_documents(documents)
 print(f"Split into {len(chunks)} chunks")
 
-# create embedding model using Together AI's endpoint
-# Together AI provides embeddings via OpenAI-compatible API
-# embedding_model = OpenAIEmbeddings(
-#     model="text-embedding-3-small",
-#     # openai_api_base="https://api.together.xyz/v1",
-#     # openai_api_key=os.getenv("TOGETHER_API_KEY"),
-# )
-
 # Create embedding model using Together AI's BAAI/bge-large-en-v1.5 model
 embedding_model = TogetherEmbeddings(
     model="BAAI/bge-large-en-v1.5"
 )
-# Had issues resolving dependency conflicts between langchain-together and the langchain-core versions
-# create together client using ChatOpenAI with Together AI's endpoint
-# llm_client = ChatOpenAI(
-#     model="openai/gpt-oss-20b",
-#     base_url="https://api.together.xyz/v1",
-#     api_key=os.getenv("TOGETHER_API_KEY"),
-#     temperature=0.7,
-# )
 
 # Create together client using ChatTogether
 # Note: ChatTogether uses TOGETHER_API_KEY from environment automatically
