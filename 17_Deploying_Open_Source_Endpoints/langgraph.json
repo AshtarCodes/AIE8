@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "dependencies": ["."],
+  "env": ".env",
+  "python_version": "3.13",
+  "graphs": {
+    "simple_agent": "app.graphs.simple_agent:graph"
+  },
+  "assistants": {
+    "agent": {
+      "graph_id": "simple_agent",
+      "name": "Simple Agent with Tools",
+      "description": "Agent with tools (Tavily search + RAG) using conditional tool-calling."
+    }
+  }
+}

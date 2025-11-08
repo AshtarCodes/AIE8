@@ -13,6 +13,8 @@ dependencies = [
     "langchain-core>=0.3.79",
     "langchain-together>=0.3.1",
     "langgraph>=1.0.1",
+    "langgraph-cli[inmem]>=0.4.7",
+    "langgraph-sdk>=0.2.9",
     "qdrant-client>=1.15.1",
     "tiktoken>=0.12.0",
 ]
